@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../rehearsalhubv2"
+		},
+		{
+			"path": "../../../../Loveworld-Singers-Backend"
+		},
+		{
+			"path": "../../.."
+		}
+	],
+	"settings": {
+		"java.configuration.updateBuildConfiguration": "interactive"
+	}
+}

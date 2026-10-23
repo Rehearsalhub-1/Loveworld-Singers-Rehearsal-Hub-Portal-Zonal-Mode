@@ -1,0 +1,28 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    
+    "voice_calls": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    
+    "presence": {
+      ".read": "auth != null",
+      "$userId": {
+        ".write": "auth != null && auth.uid == $userId"
+      }
+    },
+    
+    "audiolab_sessions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    
+    "fcm_tokens": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

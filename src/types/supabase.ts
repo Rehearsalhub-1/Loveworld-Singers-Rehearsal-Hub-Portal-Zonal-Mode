@@ -223,13 +223,16 @@ export interface PraiseNightSong {
   drummer?: string;
   lyrics?: string;
   solfas?: string;
+  solfa?: string;
+  conductorGuide?: string;
   notation?: string;
   rehearsalCount?: number; // Manual rehearsal count
   audioFile?: string;
+  audioUrl?: string;
   mediaId?: number; // Reference to media table for uploaded audio files
   imageUrl?: string; // Image/artwork for the song
   // Multiple audio parts for AudioLab
-  audioUrls?: Record<string, string>; // { full: url, soprano: url, alto: url, tenor: url, bass: url, custom: url }
+  audioUrls?: Record<string, any>; // { full: url, soprano: url, alto: url, tenor: url, bass: url, custom: url }
   customParts?: string[]; // Array of custom part names beyond default S/A/T/B
   availableParts?: string[]; // List of available parts (computed from audioUrls keys)
   notes?: string;

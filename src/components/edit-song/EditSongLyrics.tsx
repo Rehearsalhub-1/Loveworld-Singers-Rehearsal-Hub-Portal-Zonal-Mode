@@ -9,13 +9,15 @@ interface EditSongLyricsProps {
   setSongLyrics: (value: string) => void;
   handleCreateHistory: (type: any) => void;
   historyButtonClasses: string;
+  songId?: string;
 }
 
 export const EditSongLyrics: React.FC<EditSongLyricsProps> = ({
   songLyrics,
   setSongLyrics,
   handleCreateHistory,
-  historyButtonClasses
+  historyButtonClasses,
+  songId
 }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
@@ -42,6 +44,7 @@ export const EditSongLyrics: React.FC<EditSongLyricsProps> = ({
 
         <div className="relative">
           <BasicTextEditor
+            key={`lyrics-${songId || 'new'}`}
             id="lyrics-editor"
             value={songLyrics}
             onChange={(value) => {

@@ -11,6 +11,7 @@ interface EditSongNotationProps {
   setSongNotation: (value: string) => void;
   handleCreateHistory: (type: any) => void;
   historyButtonClasses: string;
+  songId?: string;
 }
 
 export const EditSongNotation: React.FC<EditSongNotationProps> = ({
@@ -19,7 +20,8 @@ export const EditSongNotation: React.FC<EditSongNotationProps> = ({
   songNotation,
   setSongNotation,
   handleCreateHistory,
-  historyButtonClasses
+  historyButtonClasses,
+  songId
 }) => {
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -48,6 +50,7 @@ export const EditSongNotation: React.FC<EditSongNotationProps> = ({
 
           <div className="relative">
             <BasicTextEditor
+              key={`solfas-${songId || 'new'}`}
               id="solfas-editor"
               value={songSolfas}
               onChange={(value) => {
@@ -93,6 +96,7 @@ Do Re Mi Fa Sol La Ti Do"
 
           <div className="relative">
             <BasicTextEditor
+              key={`notation-${songId || 'new'}`}
               id="notation-editor"
               value={songNotation}
               onChange={(value) => {

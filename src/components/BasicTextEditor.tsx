@@ -34,17 +34,29 @@ export default function BasicTextEditor({
     setIsMounted(true);
   }, []);
 
-  // Only set initial value, don't update on every value change (prevents typing issues)
+  const lastPropValueRef = useRef(value);
+
+  // Synchronize editor content on mount and when value changes from outside
   useEffect(() => {
-    if (editorRef.current && !isInitialized && value) {
-      editorRef.current.innerHTML = prepareLyricsForDisplay(value);
+    if (!editorRef.current) return;
+
+    const formatted = value ? prepareLyricsForDisplay(value) : '';
+
+    if (value !== lastPropValueRef.current) {
+      lastPropValueRef.current = value;
+      if (editorRef.current.innerHTML !== formatted) {
+        editorRef.current.innerHTML = formatted;
+      }
+    } else if (!isInitialized) {
+      editorRef.current.innerHTML = formatted;
       setIsInitialized(true);
     }
-  }, [value, isInitialized]);
+  }, [value, isInitialized, isMounted]);
 
   const handleInput = () => {
     if (editorRef.current) {
       const content = editorRef.current.innerHTML;
+      lastPropValueRef.current = content;
       onChange(content);
     }
   };

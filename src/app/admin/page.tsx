@@ -109,6 +109,7 @@ function AdminContent() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingPageCategory, setEditingPageCategory] = useState<any | null>(null);
   const [editingSong, setEditingSong] = useState<PraiseNightSong | null>(null);
+  const [openingSongId, setOpeningSongId] = useState<string | null>(null);
   const [showCategoryOrderModal, setShowCategoryOrderModal] = useState(false);
   const [showPageCategoryOrderModal, setShowPageCategoryOrderModal] = useState(false);
 
@@ -1179,10 +1180,85 @@ function AdminContent() {
     setPageToDelete(null);
   };
 
-  // Song management functions
-  const handleEditSong = (song: PraiseNightSong) => {
-    setEditingSong(song);
-    setShowSongModal(true);
+  // Song management functions - exact parity with admin mobile app useProgramSongs openSong
+  const handleEditSong = async (song: PraiseNightSong) => {
+    if (!song) return;
+
+    // 1. If it's a new song (no id), open modal immediately with defaults
+    if (!song.id) {
+      const newSong: PraiseNightSong = {
+        ...song,
+        id: '',
+        title: song.title || '',
+        category: song.category || selectedCategory || '',
+        categories: song.categories || (song.category ? [song.category] : selectedCategory ? [selectedCategory] : []),
+        praiseNightId: song.praiseNightId || selectedPage?.id || '',
+        status: song.status || 'unheard',
+        lyrics: '',
+        solfas: '',
+        notation: '',
+      };
+      setEditingSong(newSong);
+      setShowSongModal(true);
+      return;
+    }
+
+    // 2. Existing song: fetch full song details FIRST
+    // The program list endpoint strips lyrics/solfas/conductor guide to save bandwidth,
+    // so we MUST load the full song first — otherwise editing would show empty fields
+    // or overwrite those fields with blanks on save.
+    if (openingSongId) return;
+    setOpeningSongId(String(song.id));
+
+    try {
+      const res: any = await BackendAPI.songs.getById(String(song.id));
+      const full = res?.data || (res?.id ? res : null);
+      if (!full || !full.id) {
+        throw new Error('Song details could not be found');
+      }
+
+      const merged: any = { ...song, ...full };
+
+      // Helper matching mobile app getSongAllCategories
+      const cats = new Set<string>();
+      if (merged.category && typeof merged.category === 'string' && merged.category.trim()) {
+        cats.add(merged.category.trim());
+      }
+      if (Array.isArray(full.categories)) {
+        full.categories.forEach((c: any) => { if (typeof c === 'string' && c.trim()) cats.add(c.trim()); });
+      }
+      if (Array.isArray(song.categories)) {
+        song.categories.forEach((c: any) => { if (typeof c === 'string' && c.trim()) cats.add(c.trim()); });
+      }
+      const rawCats = (merged as any)?.audioUrls?._categories;
+      if (Array.isArray(rawCats)) {
+        rawCats.forEach((c: any) => { if (typeof c === 'string' && c.trim()) cats.add(c.trim()); });
+      }
+      const allCats = Array.from(cats);
+      merged.categories = allCats;
+      merged.category = merged.category || allCats[0] || null;
+
+      // Ensure lyrics and solfas fields are populated
+      merged.lyrics = full.lyrics || song.lyrics || '';
+      merged.solfas = full.solfas || full.conductorGuide || full.solfa || song.solfas || (song as any).conductorGuide || '';
+      merged.conductorGuide = full.conductorGuide || merged.solfas || '';
+      merged.notation = full.notation || song.notation || '';
+
+      // Update allSongs table state so in-memory cache has full song details
+      setAllSongs(prev => prev.map(s => (String(s.id) === String(song.id) ? { ...s, ...merged } : s)));
+
+      // Open modal with the fully loaded song
+      setEditingSong(merged);
+      setShowSongModal(true);
+    } catch (err: any) {
+      console.error('Could not load song details for editing:', err);
+      addToast({
+        type: 'error',
+        message: 'The full song details could not be loaded, so editing was blocked to protect the lyrics and conductor\'s guide. Please check your connection and try again.'
+      });
+    } finally {
+      setOpeningSongId(null);
+    }
   };
 
   const handleDeleteSong = (song: PraiseNightSong) => {

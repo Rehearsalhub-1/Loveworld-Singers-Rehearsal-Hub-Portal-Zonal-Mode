@@ -7,6 +7,8 @@ import MediaSelectionModal from './MediaSelectionModal';
 import { useZone } from '@/hooks/useZone';
 import { isHQGroup } from '@/config/zones';
 import { useAdminTheme } from './admin/AdminThemeProvider';
+import { BackendAPI } from '@/lib/api-client';
+import { Loader2 } from 'lucide-react';
 
 // Modular Components
 import { EditSongHeader } from './edit-song/EditSongHeader';
@@ -126,130 +128,253 @@ export default function EditSongModal({
   const [historyDescription, setHistoryDescription] = useState('');
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
   const [showHistoryList, setShowHistoryList] = useState(false);
-  const [originalHistoryValues, setOriginalHistoryValues] = useState({ old_value: '', new_value: '' });
+  const [originalHistoryValues, setOriginalHistoryValues] = useState<{ old_value: string; new_value: string }>({ old_value: '', new_value: '' });
+  const [editingHistoryEntryId, setEditingHistoryEntryId] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const returnToListRef = React.useRef(false);
 
-  // History logic
-  const handleCreateHistory = (type: 'song-details' | 'personnel' | 'music-details' | 'lyrics' | 'solfas' | 'notation' | 'audio' | 'comments') => {
-    (window as any).currentHistoryEntryId = null;
+  const formatHistoryType = (type: string) => {
+    switch (type) {
+      case 'song-details': return 'Song Details';
+      case 'personnel': return 'Personnel';
+      case 'music-details': return 'Music Details';
+      case 'lyrics': return 'Lyrics';
+      case 'solfas': return "Conductor's Guide";
+      case 'notation': return 'Solfa Notation';
+      case 'audio': return 'Audio';
+      case 'comments': return 'Comments';
+      default: return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+  };
+
+  const getContentForType = (typeKey: string) => {
+    switch (typeKey) {
+      case 'song-details':
+        return [
+          `Title: ${songTitle || 'Untitled'}`,
+          `Categories: ${songCategories.join(', ') || 'None'}`,
+          `Program: ${songPraiseNight || 'Default'}`,
+          `Status: ${songStatus}`,
+          songKey ? `Key: ${songKey}` : '',
+          songTempo ? `Tempo: ${songTempo} BPM` : '',
+        ].filter(Boolean).join('\n');
+      case 'personnel':
+        return [
+          songLeadSinger ? `Lead Singer: ${songLeadSinger}` : '',
+          songWriter ? `Writer: ${songWriter}` : '',
+          songConductor ? `Conductor: ${songConductor}` : '',
+          songLeadKeyboardist ? `Lead Keyboard: ${songLeadKeyboardist}` : '',
+          songLeadGuitarist ? `Lead Guitar: ${songLeadGuitarist}` : '',
+          songDrummer ? `Drummer: ${songDrummer}` : '',
+        ].filter(Boolean).join('\n');
+      case 'music-details':
+        return [
+          songKey ? `Key: ${songKey}` : '',
+          songTempo ? `Tempo: ${songTempo} BPM` : '',
+        ].filter(Boolean).join('\n');
+      case 'lyrics':
+        return songLyrics || '';
+      case 'solfas':
+        return songSolfas || '';
+      case 'notation':
+        return songNotation || '';
+      case 'audio':
+        return (audioFile ? audioFile.url : songAudioFile) || '';
+      case 'comments':
+        return coordinatorComment || '';
+      default:
+        return '';
+    }
+  };
+
+  const loadHistoryEntries = async (targetSongId?: string | number) => {
+    const sId = targetSongId || song?.id;
+    if (!sId) {
+      setHistoryEntries([]);
+      return;
+    }
+    setIsLoadingHistory(true);
+    try {
+      const res: any = await BackendAPI.songs.history.bySong(String(sId));
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const seen = new Set();
+      const deduplicated = list.filter((item: any) => {
+        if (!item?.id) return true;
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+      setHistoryEntries(deduplicated);
+    } catch (err) {
+      console.error('Error fetching song history:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleCreateHistory = (
+    type: 'song-details' | 'personnel' | 'music-details' | 'lyrics' | 'solfas' | 'notation' | 'audio' | 'comments' = 'song-details',
+    fromList = false
+  ) => {
+    setEditingHistoryEntryId(null);
     setHistoryType(type);
+    const label = formatHistoryType(type);
+    const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    setHistoryTitle(`${label} — ${dateStr}`);
+    setHistoryDescription('');
+    const currentContent = getContentForType(type);
+    setOriginalHistoryValues({ old_value: currentContent, new_value: currentContent });
 
-    const sectionNames = {
-      'song-details': 'Song Details',
-      'personnel': 'Personnel',
-      'music-details': 'Music Details',
-      'lyrics': 'Lyrics',
-      'solfas': "Conductor's Guide",
-      'notation': 'Solfa Notation',
-      'audio': 'Audio',
-      'comments': 'Comments'
-    };
+    if (fromList || showHistoryList) {
+      returnToListRef.current = true;
+      setShowHistoryList(false);
+    }
+    setShowHistoryForm(true);
+  };
 
-    setHistoryTitle(`${sectionNames[type]} Version ${new Date().toLocaleDateString()}`);
-    setHistoryDescription(`Updated ${sectionNames[type].toLowerCase()} on ${new Date().toLocaleString()}`);
+  const handleEditHistory = (entry: any) => {
+    setEditingHistoryEntryId(entry.id);
+    const resolvedTitle = entry.title || entry.description || '';
+    const resolvedDesc = entry.notes !== undefined
+      ? entry.notes
+      : (entry.description && entry.description !== entry.title ? entry.description : '');
+    setHistoryTitle(resolvedTitle);
+    setHistoryDescription(resolvedDesc);
+    setHistoryType(entry.type || 'song-details');
+    setOriginalHistoryValues({
+      old_value: entry.old_value ?? entry.oldValue ?? '',
+      new_value: entry.new_value ?? entry.newValue ?? entry.old_value ?? entry.oldValue ?? '',
+    });
+    returnToListRef.current = true;
+    setShowHistoryList(false);
     setShowHistoryForm(true);
   };
 
   const handleSaveHistory = async () => {
-    if (!song?.id) return;
+    if (!historyTitle.trim()) {
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'Please enter a version title.', type: 'warning' } }));
+      return;
+    }
+    if (!song?.id) {
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'Please save the song first before recording history versions.', type: 'warning' } }));
+      return;
+    }
+
+    const titleText = historyTitle.trim();
+    const descText = historyDescription.trim();
 
     try {
-      let currentContent = '';
-      let oldValue = '';
-
-      switch (historyType) {
-        case 'song-details':
-          currentContent = JSON.stringify({ title: songTitle, category: songCategory, key: songKey, tempo: songTempo });
-          oldValue = JSON.stringify({ title: originalValues.title, category: originalValues.category, key: originalValues.key, tempo: originalValues.tempo });
-          break;
-        case 'personnel':
-          currentContent = JSON.stringify({ leadSinger: songLeadSinger, writer: songWriter, conductor: songConductor, leadKeyboardist: songLeadKeyboardist, leadGuitarist: songLeadGuitarist, drummer: songDrummer });
-          oldValue = JSON.stringify({ leadSinger: originalValues.leadSinger, writer: originalValues.writer, conductor: originalValues.conductor, leadKeyboardist: originalValues.leadKeyboardist, leadGuitarist: originalValues.leadGuitarist, drummer: originalValues.drummer });
-          break;
-        case 'music-details':
-          currentContent = JSON.stringify({ key: songKey, tempo: songTempo });
-          oldValue = JSON.stringify({ key: originalValues.key, tempo: originalValues.tempo });
-          break;
-        case 'lyrics':
-          currentContent = songLyrics;
-          oldValue = originalValues.lyrics;
-          break;
-        case 'solfas':
-          currentContent = songSolfas;
-          oldValue = originalValues.solfas;
-          break;
-        case 'notation':
-          currentContent = songNotation;
-          oldValue = originalValues.notation;
-          break;
-        case 'audio':
-          currentContent = audioFile ? audioFile.url : songAudioFile;
-          oldValue = originalValues.audioFile;
-          break;
-        case 'comments':
-          currentContent = coordinatorComment;
-          try {
-            const rawComments = Array.isArray(song?.comments) ? song!.comments : [];
-            const latestComment = rawComments.length > 0
-              ? [...rawComments].sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())[0]
-              : null;
-            oldValue = (latestComment as any)?.text || (latestComment as any)?.content || (latestComment as any)?.comment || (typeof latestComment === 'string' ? latestComment : '') || '';
-          } catch { oldValue = ''; }
-          break;
-      }
-
-      const currentHistoryEntryId = (window as any).currentHistoryEntryId;
-
-      if (currentHistoryEntryId) {
-        setHistoryEntries(prev => prev.map(entry => {
-          if (entry.id === currentHistoryEntryId) {
-            return {
-              ...entry,
-              title: historyTitle,
-              description: historyDescription,
-              type: historyType,
-              updated_at: new Date().toISOString()
-            };
-          }
-          return entry;
-        }));
-        (window as any).currentHistoryEntryId = null;
-        window.dispatchEvent(new Event('historyUpdated'));
-        setShowHistoryForm(false);
-        window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'History entry updated successfully!', type: 'success' } }));
-      } else {
-        const newEntry = {
-          id: `hist-${Date.now()}`,
-          song_id: song.id.toString(),
-          title: historyTitle,
-          description: historyDescription,
+      if (editingHistoryEntryId) {
+        const res: any = await BackendAPI.songs.history.update(editingHistoryEntryId, {
           type: historyType,
-          old_value: oldValue,
-          new_value: currentContent,
-          created_by: 'admin',
-          created_at: new Date().toISOString()
+          title: titleText,
+          description: descText,
+          old_value: originalHistoryValues.old_value,
+          new_value: originalHistoryValues.new_value,
+        });
+        const updatedEntry = res?.data || {
+          id: editingHistoryEntryId,
+          songId: String(song.id),
+          title: titleText,
+          description: descText,
+          type: historyType,
+          old_value: originalHistoryValues.old_value,
+          new_value: originalHistoryValues.new_value,
+          updated_at: new Date().toISOString(),
         };
-        setHistoryEntries(prev => [newEntry, ...prev]);
-        window.dispatchEvent(new Event('historyUpdated'));
-        window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'History entry created successfully!', type: 'success' } }));
+        setHistoryEntries(prev => prev.map(e => (e.id === editingHistoryEntryId ? { ...e, ...updatedEntry } : e)));
+        window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'History revision updated successfully!', type: 'success' } }));
+      } else {
+        const res: any = await BackendAPI.songs.history.create({
+          songId: String(song.id),
+          type: historyType,
+          title: titleText,
+          description: descText,
+          old_value: originalHistoryValues.old_value,
+          new_value: originalHistoryValues.new_value,
+        });
+        const createdEntry = res?.data || {
+          id: res?.id || `hist-${Date.now()}`,
+          songId: String(song.id),
+          title: titleText,
+          description: descText,
+          type: historyType,
+          old_value: originalHistoryValues.old_value,
+          new_value: originalHistoryValues.new_value,
+          created_at: new Date().toISOString(),
+          created_by: getCurrentUserName(),
+        };
+        setHistoryEntries(prev => [createdEntry, ...prev.filter(e => e.id !== createdEntry.id)]);
+        window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'New version revision saved to database!', type: 'success' } }));
       }
-    } catch (error) {
-      console.error('Error handling history entry:', error);
+
+      setEditingHistoryEntryId(null);
+      setShowHistoryForm(false);
+      if (returnToListRef.current) {
+        setShowHistoryList(true);
+        returnToListRef.current = false;
+      }
+    } catch (err: any) {
+      console.error('Error saving history entry:', err);
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: err?.message || 'Failed to save history entry to database.', type: 'error' } }));
     }
   };
 
-  const loadHistoryEntries = async () => {
-    // Loaded from component state
+  const handleDeleteHistory = async (historyId: string) => {
+    if (!confirm('Are you sure you want to delete this revision history entry?')) return;
+    try {
+      await BackendAPI.songs.history.delete(historyId);
+      setHistoryEntries(prev => prev.filter(entry => entry.id !== historyId));
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'History entry deleted successfully!', type: 'success' } }));
+    } catch (err: any) {
+      console.error('Error deleting history entry:', err);
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'Could not delete history entry from database.', type: 'error' } }));
+    }
   };
 
-  const handleDeleteHistory = async (historyId: string) => {
-    if (!confirm('Are you sure you want to delete this history entry?')) return;
-    setHistoryEntries(prev => prev.filter(entry => entry.id !== historyId));
-    window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'History entry deleted successfully!', type: 'success' } }));
+  const handleApplyHistory = (entry: any) => {
+    const val = entry.new_value || entry.old_value || '';
+    if (!val) {
+      window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'This history entry has no snapshot content.', type: 'info' } }));
+      return;
+    }
+    const t = (entry.type || '').toLowerCase();
+    if (t === 'lyrics') {
+      setSongLyrics(val);
+    } else if (t === 'solfas') {
+      setSongSolfas(val);
+    } else if (t === 'notation') {
+      setSongNotation(val);
+    } else if (t === 'audio') {
+      setSongAudioFile(val);
+    } else if (t === 'comments') {
+      setCoordinatorComment(val);
+    } else {
+      try {
+        const parsed = JSON.parse(val);
+        if (parsed.title) setSongTitle(parsed.title);
+        if (parsed.key) setSongKey(parsed.key);
+        if (parsed.tempo) setSongTempo(parsed.tempo);
+        if (parsed.category) setSongCategory(parsed.category);
+        if (parsed.leadSinger) setSongLeadSinger(parsed.leadSinger);
+        if (parsed.writer) setSongWriter(parsed.writer);
+        if (parsed.conductor) setSongConductor(parsed.conductor);
+      } catch {
+        // Plain text fallback
+      }
+    }
+    window.dispatchEvent(new CustomEvent('showToast', { detail: { message: `Applied revision: "${entry.title}"`, type: 'success' } }));
   };
 
   const handleMediaFileSelect = (mediaFile: any) => {
     let fixedUrl = mediaFile.url;
-    if (selectingPart === 'image') {
+    if (selectingPart === 'history-audio') {
+      setOriginalHistoryValues(prev => ({ ...prev, new_value: fixedUrl }));
+      if (!historyTitle || historyTitle.startsWith('Audio Version') || historyTitle.startsWith('Audio —')) {
+        const cleanName = (mediaFile.name || '').replace(/\.[^/.]+$/, '');
+        setHistoryTitle(`${cleanName || 'Audio'} (${new Date().toLocaleDateString()})`);
+      }
+    } else if (selectingPart === 'image') {
       setSongImageUrl(fixedUrl);
     } else if (selectingPart === 'comment-audio') {
       setCoordinatorAudioUrl(fixedUrl);
@@ -303,66 +428,172 @@ export default function EditSongModal({
     setValue(plainText.replace(/[\r\n]+/g, ' ').trim());
   };
 
+  const getSongAllCategories = (s: any): string[] => {
+    const result = new Set<string>();
+    if (s?.category && typeof s.category === 'string' && s.category.trim()) result.add(s.category.trim());
+    if (Array.isArray(s?.categories)) {
+      s.categories.forEach((c: any) => { if (typeof c === 'string' && c.trim()) result.add(c.trim()); });
+    }
+    const rawCats = s?.audioUrls?._categories;
+    if (Array.isArray(rawCats)) {
+      rawCats.forEach((c: any) => { if (typeof c === 'string' && c.trim()) result.add(c.trim()); });
+    }
+    return Array.from(result);
+  };
+
+  const [isLoadingSongDetails, setIsLoadingSongDetails] = useState(false);
+  const lastLoadedSongIdRef = React.useRef<string | null | undefined>(undefined);
+  const lastVisibleRef = React.useRef<boolean>(false);
+
   useEffect(() => {
-    if (song) {
-      setSongTitle(song.title || '');
-      setSongCategory(song.category || '');
-      setSongCategories(Array.isArray(song.categories) ? song.categories : song.category ? [song.category] : []);
-      const praiseNight = praiseNightCategories.find(pn => pn.id === song.praiseNightId);
-      setSongPraiseNight(praiseNight?.name || '');
-      setSongStatus(song.status);
-      setSongLeadSinger(song.leadSinger || '');
-      setSongWriter(song.writer || '');
-      setSongConductor(song.conductor || '');
-      setSongKey(song.key || '');
-      setSongTempo(song.tempo || '');
-      setSongLeadKeyboardist(song.leadKeyboardist || '');
-      setSongLeadGuitarist(song.leadGuitarist || '');
-      setSongDrummer(song.drummer || '');
-      setSongAudioFile(song.audioFile || '');
-      setSongImageUrl(song.imageUrl || '');
-      setAudioFile(null);
-      setSongLyrics(song.lyrics || '');
-      setSongSolfas(song.solfas || '');
-      setSongNotation(song.notation || '');
-      try {
-        let rawComments: any = song.comments;
-        if (typeof rawComments === 'string') {
-          try { rawComments = JSON.parse(rawComments); } catch { rawComments = [{ text: rawComments }]; }
-        }
-        if (!rawComments || (Array.isArray(rawComments) && rawComments.length === 0)) {
-          if (song.notes || (song as any).coordinatorComment) {
-            rawComments = [{ text: song.notes || (song as any).coordinatorComment }];
+    let isCancelled = false;
+    const songId = song?.id ? String(song.id) : null;
+    const songChanged = songId !== lastLoadedSongIdRef.current;
+    const modalJustOpened = isOpen && !lastVisibleRef.current;
+
+    lastVisibleRef.current = isOpen;
+
+    if (!modalJustOpened && !songChanged) {
+      if (!isOpen) {
+        setShowHistoryList(false);
+        setShowHistoryForm(false);
+      }
+      return;
+    }
+
+    lastLoadedSongIdRef.current = songId;
+
+    if (song && isOpen) {
+      const applySongData = (s: any) => {
+        setSongTitle(s.title || '');
+        const cats = getSongAllCategories(s);
+        setSongCategory(s.category || cats[0] || '');
+        setSongCategories(cats);
+        const praiseNight = praiseNightCategories.find(pn => String(pn.id) === String(s.praiseNightId) || pn.name === s.praiseNightId);
+        setSongPraiseNight(praiseNight?.name || (praiseNightCategories.length > 0 ? praiseNightCategories[0].name : ''));
+        setSongStatus(s.status || 'unheard');
+        setSongLeadSinger(s.leadSinger || '');
+        setSongWriter(s.writer || '');
+        setSongConductor(s.conductor || '');
+        setSongKey(s.key || '');
+        setSongTempo(s.tempo || '');
+        setSongLeadKeyboardist(s.leadKeyboardist || '');
+        setSongLeadGuitarist(s.leadGuitarist || '');
+        setSongDrummer(s.drummer || '');
+        setSongAudioFile(s.audioFile || s.audioUrl || '');
+        setSongImageUrl(s.imageUrl || '');
+        setAudioFile(null);
+        setSongLyrics(s.lyrics || '');
+        const solfasVal = s.solfas || s.conductorGuide || s.solfa || '';
+        setSongSolfas(solfasVal);
+        setSongNotation(s.notation || '');
+        try {
+          let rawComments: any = s.comments;
+          if (typeof rawComments === 'string') {
+            try { rawComments = JSON.parse(rawComments); } catch { rawComments = [{ text: rawComments }]; }
           }
+          if (!rawComments || (Array.isArray(rawComments) && rawComments.length === 0)) {
+            if (s.notes || s.coordinatorComment) {
+              rawComments = [{ text: s.notes || s.coordinatorComment }];
+            }
+          }
+          const commentList = Array.isArray(rawComments) ? rawComments : (rawComments ? [rawComments] : []);
+          const latestComment = commentList.length > 0
+            ? [...commentList].sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())[0]
+            : null;
+          setCoordinatorComment((latestComment as any)?.text || (latestComment as any)?.content || (latestComment as any)?.comment || (typeof latestComment === 'string' ? latestComment : '') || '');
+          setCoordinatorAudioUrl((latestComment as any)?.audioUrl || '');
+        } catch { }
+        setRehearsalCount(s.rehearsalCount ?? 0);
+
+        // AudioUrls without underscore metadata
+        const cleanAudioUrls: Record<string, string> = {};
+        if (s.audioUrls && typeof s.audioUrls === 'object') {
+          Object.entries(s.audioUrls).forEach(([k, v]) => {
+            if (!k.startsWith('_')) cleanAudioUrls[k] = v as string;
+          });
         }
-        const commentList = Array.isArray(rawComments) ? rawComments : (rawComments ? [rawComments] : []);
-        const latestComment = commentList.length > 0
-          ? [...commentList].sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())[0]
-          : null;
-        setCoordinatorComment((latestComment as any)?.text || (latestComment as any)?.content || (latestComment as any)?.comment || (typeof latestComment === 'string' ? latestComment : '') || '');
-        setCoordinatorAudioUrl((latestComment as any)?.audioUrl || '');
-      } catch { }
-      setRehearsalCount(song.rehearsalCount ?? 0);
-      setAudioUrls(song.audioUrls || {});
-      setCustomParts(song.customParts || []);
-      setOriginalValues({
-        lyrics: song.lyrics || '',
-        solfas: song.solfas || '',
-        notation: song.notation || '',
-        audioFile: song.audioFile || '',
-        title: song.title || '',
-        category: song.category || '',
-        leadSinger: song.leadSinger || '',
-        writer: song.writer || '',
-        conductor: song.conductor || '',
-        leadKeyboardist: song.leadKeyboardist || '',
-        leadGuitarist: song.leadGuitarist || '',
-        drummer: song.drummer || '',
-        key: song.key || '',
-        tempo: song.tempo || ''
-      });
-      loadHistoryEntries();
-    } else {
+        setAudioUrls(cleanAudioUrls);
+
+        // Custom parts extraction matching mobile app
+        let cParts: string[] = [];
+        const rawCustom = s.customParts || (s.audioUrls as any)?._customParts;
+        if (Array.isArray(rawCustom)) {
+          cParts = [...rawCustom];
+        } else if (rawCustom && typeof rawCustom === 'object') {
+          cParts = Object.keys(rawCustom);
+        }
+        const standardStems = new Set(['full', 'soprano', 'alto', 'tenor', 'bass', 'lead', 'instrumental', 'main', 'master']);
+        if (s.audioUrls && typeof s.audioUrls === 'object') {
+          Object.keys(s.audioUrls).forEach(k => {
+            if (!k.startsWith('_') && !standardStems.has(k.toLowerCase()) && !cParts.includes(k)) {
+              cParts.push(k);
+            }
+          });
+        }
+        setCustomParts(cParts);
+
+        setOriginalValues({
+          lyrics: s.lyrics || '',
+          solfas: solfasVal,
+          notation: s.notation || '',
+          audioFile: s.audioFile || s.audioUrl || '',
+          title: s.title || '',
+          category: s.category || cats[0] || '',
+          leadSinger: s.leadSinger || '',
+          writer: s.writer || '',
+          conductor: s.conductor || '',
+          leadKeyboardist: s.leadKeyboardist || '',
+          leadGuitarist: s.leadGuitarist || '',
+          drummer: s.drummer || '',
+          key: s.key || '',
+          tempo: s.tempo || ''
+        });
+      };
+
+      // Apply available song data immediately
+      applySongData(song);
+      if (Array.isArray(song.history) && song.history.length > 0) {
+        setHistoryEntries(song.history);
+      }
+      if (song.id) {
+        loadHistoryEntries(song.id);
+      }
+
+      // If song lacks lyrics and conductor guide, fetch full song details in background
+      const lacksDetails = Boolean(
+        song.id &&
+        song.lyrics === undefined &&
+        song.solfas === undefined &&
+        (song as any).conductorGuide === undefined
+      );
+
+      if (lacksDetails && song.id) {
+        setIsLoadingSongDetails(true);
+        BackendAPI.songs.getById(String(song.id)).then((res: any) => {
+          if (isCancelled) return;
+          const full = res?.data || (res?.id ? res : null);
+          if (full) {
+            applySongData({
+              ...song,
+              ...full,
+              categories: [
+                ...(Array.isArray(full.categories) ? full.categories : []),
+                ...(Array.isArray(song.categories) ? song.categories : []),
+              ],
+            });
+          }
+        }).catch((err) => {
+          console.warn('Could not load full song details from API:', err);
+        }).finally(() => {
+          if (!isCancelled) setIsLoadingSongDetails(false);
+        });
+      } else {
+        setIsLoadingSongDetails(false);
+      }
+    } else if (!isOpen) {
+      lastLoadedSongIdRef.current = null;
+      setIsLoadingSongDetails(false);
       setSongTitle('');
       setSongCategory('');
       setSongCategories([]);
@@ -390,12 +621,17 @@ export default function EditSongModal({
       setOriginalValues({ lyrics: '', solfas: '', notation: '', audioFile: '', title: '', category: '', leadSinger: '', writer: '', conductor: '', leadKeyboardist: '', leadGuitarist: '', drummer: '', key: '', tempo: '' });
       setHistoryEntries([]);
     }
-  }, [song]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [song, isOpen, praiseNightCategories]);
 
   const handleUpdate = async () => {
     if (!songTitle.trim()) return;
-    const selectedPraiseNight = praiseNightCategories.find(pn => pn.name === songPraiseNight);
-    if (!selectedPraiseNight) {
+    const selectedPraiseNight = praiseNightCategories.find(pn => pn.name === songPraiseNight || String(pn.id) === String(song?.praiseNightId));
+    const effectivePraiseNightId = selectedPraiseNight?.id || song?.praiseNightId || (praiseNightCategories.length > 0 ? praiseNightCategories[0].id : undefined);
+    if (!effectivePraiseNightId) {
       window.dispatchEvent(new CustomEvent('showToast', { detail: { message: 'Please select a valid Praise Night', type: 'warning' } }));
       return;
     }
@@ -411,9 +647,9 @@ export default function EditSongModal({
     const songData: PraiseNightSong = {
       title: songTitle.trim(),
       status: songStatus,
-      category: songCategory,
+      category: songCategory || (songCategories.length > 0 ? songCategories[0] : ''),
       categories: songCategories,
-      praiseNightId: selectedPraiseNight.id,
+      praiseNightId: effectivePraiseNightId,
       lyrics: cleanLyricsForSave(songLyrics),
       leadSinger: songLeadSinger,
       writer: songWriter,
@@ -424,15 +660,22 @@ export default function EditSongModal({
       leadGuitarist: songLeadGuitarist,
       drummer: songDrummer,
       solfas: songSolfas,
+      solfa: songSolfas,
+      conductorGuide: songSolfas,
       notation: songNotation,
       rehearsalCount: rehearsalCount,
       comments: finalComments,
       audioFile: finalAudioFile,
+      audioUrl: finalAudioFile,
       ...(audioFile && { mediaId: parseInt(audioFile.id) }),
-      audioUrls: audioUrls,
+      audioUrls: {
+        ...audioUrls,
+        _categories: songCategories,
+        _customParts: customParts,
+      },
       customParts: customParts,
       imageUrl: songImageUrl,
-      availableParts: Object.keys(audioUrls).filter(k => audioUrls[k]),
+      availableParts: Object.keys(audioUrls).filter(k => audioUrls[k] && !k.startsWith('_')),
       history: song?.history || []
     };
 
@@ -456,7 +699,6 @@ export default function EditSongModal({
   };
 
   if (!isOpen) return null;
-  if (song && song.id && !song.title) return null;
 
   return (
     <>
@@ -468,6 +710,13 @@ export default function EditSongModal({
             onClose={onClose}
             onDelete={handleDeleteSong}
           />
+
+          {isLoadingSongDetails && (
+            <div className="bg-purple-50 border-b border-purple-200 px-6 py-2.5 flex items-center justify-center gap-2 text-xs font-semibold text-purple-700 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+              <span>Loading full song details, lyrics, and conductor guide...</span>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto">
             <div className="w-full p-3 sm:p-4 lg:p-6">
@@ -548,6 +797,7 @@ export default function EditSongModal({
                     setSongLyrics={setSongLyrics}
                     handleCreateHistory={handleCreateHistory}
                     historyButtonClasses={historyButtonClasses}
+                    songId={song?.id ? String(song.id) : undefined}
                   />
 
                   <EditSongNotation
@@ -557,6 +807,7 @@ export default function EditSongModal({
                     setSongNotation={setSongNotation}
                     handleCreateHistory={handleCreateHistory}
                     historyButtonClasses={historyButtonClasses}
+                    songId={song?.id ? String(song.id) : undefined}
                   />
 
                   <EditSongComments
@@ -579,7 +830,7 @@ export default function EditSongModal({
             onUpdate={handleUpdate}
             onClose={onClose}
             onViewHistory={() => {
-              loadHistoryEntries();
+              if (song?.id) loadHistoryEntries(song.id);
               setShowHistoryList(true);
             }}
             historyEntriesCount={historyEntries.length}
@@ -599,6 +850,7 @@ export default function EditSongModal({
       <EditSongHistoryModals
         showHistoryForm={showHistoryForm}
         setShowHistoryForm={setShowHistoryForm}
+        editingHistoryEntryId={editingHistoryEntryId}
         historyTitle={historyTitle}
         setHistoryTitle={setHistoryTitle}
         historyType={historyType}
@@ -608,11 +860,48 @@ export default function EditSongModal({
         originalHistoryValues={originalHistoryValues}
         setOriginalHistoryValues={setOriginalHistoryValues}
         handleSaveHistory={handleSaveHistory}
+        onCloseHistoryForm={() => {
+          setEditingHistoryEntryId(null);
+          setShowHistoryForm(false);
+          if (returnToListRef.current) {
+            setShowHistoryList(true);
+            returnToListRef.current = false;
+          }
+        }}
+        onSelectHistoryType={(typeKey) => {
+          setHistoryType(typeKey as any);
+          if (!editingHistoryEntryId) {
+            const label = formatHistoryType(typeKey);
+            const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            setHistoryTitle(`${label} — ${dateStr}`);
+            setHistoryDescription('');
+            const currentContent = getContentForType(typeKey);
+            setOriginalHistoryValues({ old_value: currentContent, new_value: currentContent });
+          }
+        }}
         showHistoryList={showHistoryList}
         setShowHistoryList={setShowHistoryList}
         historyEntries={historyEntries}
         song={song}
         handleDeleteHistory={handleDeleteHistory}
+        onEditHistory={handleEditHistory}
+        onAddHistory={handleCreateHistory}
+        onApplyHistory={handleApplyHistory}
+        formatHistoryType={formatHistoryType}
+        isLoadingHistory={isLoadingHistory}
+        onRefreshHistory={() => {
+          if (song?.id) loadHistoryEntries(song.id);
+        }}
+        currentSongAudioFile={audioFile ? audioFile.url : songAudioFile}
+        songTitle={songTitle}
+        songKey={songKey}
+        songTempo={songTempo}
+        songCategories={songCategories}
+        songStatus={songStatus}
+        onOpenMediaPicker={() => {
+          setSelectingPart('history-audio');
+          setShowMediaManager(true);
+        }}
       />
     </>
   );

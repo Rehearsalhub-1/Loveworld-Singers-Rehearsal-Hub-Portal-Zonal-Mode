@@ -277,42 +277,6 @@ export const LyricsCastMode: React.FC<LyricsCastModeProps> = ({
           </div>
         </div>
 
-        {/* Dot Navigator in header — horizontal scroll */}
-        {lyricLines.length > 0 && (
-          <div className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide mx-1">
-            {lyricLines.map((line, i) => {
-              const isActive = activePara === i;
-              const isLabel = line.isBold;
-              return (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setActivePara(i);
-                    const el = paraRefsMap.current[i];
-                    if (el && scrollRef.current) {
-                      scrollRef.current.scrollTo({ top: el.offsetTop - 80, behavior: 'smooth' });
-                    }
-                  }}
-                  style={{
-                    width: isActive ? 12 : isLabel ? 9 : 7,
-                    height: isActive ? 12 : isLabel ? 9 : 7,
-                    minWidth: isActive ? 12 : isLabel ? 9 : 7,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    background: isActive ? '#FFD700' : isLabel ? 'rgba(255,215,0,0.7)' : 'rgba(255,255,255,0.5)',
-                    boxShadow: isActive ? '0 0 6px #FFD700' : 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    outline: 'none',
-                    transition: 'all 0.15s',
-                  }}
-                  aria-label={`Line ${i + 1}`}
-                />
-              );
-            })}
-          </div>
-        )}
 
         {/* Controls */}
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -378,12 +342,12 @@ export const LyricsCastMode: React.FC<LyricsCastModeProps> = ({
         </div>
       </div>
 
-      {/* Lyrics + Dot Navigator */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Lyrics + Side Dot Navigator */}
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Lyrics scroll area */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-8 py-6 scrollbar-hide"
+          className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 scrollbar-hide"
           style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
         >
           <div className="max-w-3xl mx-auto">
@@ -414,6 +378,48 @@ export const LyricsCastMode: React.FC<LyricsCastModeProps> = ({
             )}
           </div>
         </div>
+
+        {/* Side Dot Navigator — Clean vertical dot rail on the side */}
+        {lyricLines.length > 0 && (
+          <div className="flex flex-col items-center justify-center pr-3 pl-1 py-4 z-20 flex-shrink-0 select-none">
+            <div className="flex flex-col items-center gap-2 p-1.5 rounded-full bg-black/30 backdrop-blur-md max-h-[75vh] overflow-y-auto scrollbar-hide border border-white/10 shadow-xl">
+              {lyricLines.map((line, i) => {
+                const isActive = activePara === i;
+                const isLabel = line.isBold;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setActivePara(i);
+                      const el = paraRefsMap.current[i];
+                      if (el && scrollRef.current) {
+                        scrollRef.current.scrollTo({ top: el.offsetTop - 80, behavior: 'smooth' });
+                      }
+                    }}
+                    title={line.text ? line.text.substring(0, 45) : `Part ${i + 1}`}
+                    style={{
+                      width: isActive ? 10 : isLabel ? 8 : 6,
+                      height: isActive ? 10 : isLabel ? 8 : 6,
+                      minWidth: isActive ? 10 : isLabel ? 8 : 6,
+                      minHeight: isActive ? 10 : isLabel ? 8 : 6,
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                      background: isActive ? '#FFD700' : isLabel ? 'rgba(255,215,0,0.75)' : 'rgba(255,255,255,0.45)',
+                      boxShadow: isActive ? '0 0 8px #FFD700, 0 0 14px rgba(255,215,0,0.5)' : 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      outline: 'none',
+                      transition: 'all 0.15s ease-out',
+                      transform: isActive ? 'scale(1.25)' : 'scale(1)'
+                    }}
+                    aria-label={`Jump to line ${i + 1}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Text styles */}

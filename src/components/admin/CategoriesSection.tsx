@@ -411,18 +411,24 @@ export default function CategoriesSection(props: CategoriesSectionProps) {
                   {categorySongs.length > 0 && (
                     <div className="border-t border-slate-100 bg-slate-50/50">
                       <div className="divide-y divide-slate-100">
-                        {categorySongs.slice(0, 2).map((song, index) => (
-                          <div key={index} className="px-4 py-2 flex items-center gap-2">
-                            <Music className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                            <span className="text-xs text-slate-600 truncate flex-1">{song.title}</span>
+                        {categorySongs.slice(0, 3).map((song, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => handleEditCategoryContent(song)}
+                            className="px-4 py-2 flex items-center gap-2 hover:bg-purple-50/60 active:bg-purple-100/60 cursor-pointer group/song transition-colors"
+                            title={`Edit "${song.title}"`}
+                          >
+                            <Music className="w-3.5 h-3.5 text-slate-400 group-hover/song:text-purple-600 transition-colors flex-shrink-0" />
+                            <span className="text-xs text-slate-600 group-hover/song:text-purple-900 font-medium truncate flex-1">{song.title}</span>
                             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                               song.status === 'heard' ? 'bg-green-500' : 'bg-yellow-500'
                             }`} />
+                            <Edit className="w-3.5 h-3.5 text-slate-300 group-hover/song:text-purple-600 opacity-0 group-hover/song:opacity-100 transition-all flex-shrink-0" />
                           </div>
                         ))}
-                        {categorySongs.length > 2 && (
+                        {categorySongs.length > 3 && (
                           <div className="px-4 py-2 text-center">
-                            <span className="text-[10px] text-slate-400 font-medium">+{categorySongs.length - 2} more</span>
+                            <span className="text-[10px] text-slate-400 font-medium">+{categorySongs.length - 3} more songs</span>
                           </div>
                         )}
                       </div>

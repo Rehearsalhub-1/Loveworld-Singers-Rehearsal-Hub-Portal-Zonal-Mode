@@ -323,14 +323,14 @@ export default function DashboardSection({ onSectionChange }: DashboardSectionPr
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px] p-8">
+      <div className="flex items-center justify-center h-full min-h-[400px] p-8 overflow-y-auto">
         <CustomLoader message="Loading dashboard stats..." />
       </div>
     )
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-purple-50/30 text-gray-900 pb-12">
+    <div className="h-full overflow-y-auto bg-gradient-to-br from-slate-50 via-white to-purple-50/30 text-gray-900 pb-24 lg:pb-16 scrollbar-thin">
       <div className="max-w-7xl mx-auto">
 
         {/* Greeting Banner */}

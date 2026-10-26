@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { History } from 'lucide-react';
+import { History, Plus, Check, X } from 'lucide-react';
 import { Category } from '@/types/supabase';
 
 interface EditSongBasicInfoProps {
@@ -43,6 +43,50 @@ export const EditSongBasicInfo: React.FC<EditSongBasicInfoProps> = ({
   setSongImageUrl,
   handleOpenMediaSelectorForPart
 }) => {
+  const [newCatInput, setNewCatInput] = React.useState('');
+  const [showAddCat, setShowAddCat] = React.useState(false);
+
+  // Combine categories from props with any categories currently attached to the song
+  const allCategoryNames = React.useMemo(() => {
+    const names = new Set<string>();
+    categories.forEach(c => {
+      if (c?.name && c.name.trim()) names.add(c.name.trim());
+    });
+    songCategories.forEach(c => {
+      if (typeof c === 'string' && c.trim()) names.add(c.trim());
+    });
+    return Array.from(names);
+  }, [categories, songCategories]);
+
+  const isChecked = (name: string) => {
+    return songCategories.some(sc => sc.trim().toLowerCase() === name.trim().toLowerCase());
+  };
+
+  const toggleCategory = (name: string) => {
+    const trimmed = name.trim();
+    if (isChecked(trimmed)) {
+      const next = songCategories.filter(sc => sc.trim().toLowerCase() !== trimmed.toLowerCase());
+      setSongCategories(next);
+      setSongCategory(next[0] || '');
+    } else {
+      const next = [...songCategories, trimmed];
+      setSongCategories(next);
+      setSongCategory(next[0] || '');
+    }
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = newCatInput.trim();
+    if (!trimmed) return;
+    if (!isChecked(trimmed)) {
+      const next = [...songCategories, trimmed];
+      setSongCategories(next);
+      setSongCategory(next[0] || '');
+    }
+    setNewCatInput('');
+    setShowAddCat(false);
+  };
+
   return (
     <div className="bg-slate-50 rounded-lg p-4 sm:p-6">
       <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -74,34 +118,103 @@ export const EditSongBasicInfo: React.FC<EditSongBasicInfoProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Categories * (Select one or more)
-            </label>
-            <div className="border-2 border-slate-300 rounded-lg p-3 bg-slate-50 max-h-48 overflow-y-auto">
-              {categories.map(category => (
-                <label key={category.id} className="flex items-center space-x-3 py-2 hover:bg-slate-100 rounded px-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={songCategories.includes(category.name)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        const newCategories = [...songCategories, category.name];
-                        setSongCategories(newCategories);
-                        setSongCategory(newCategories[0] || '');
-                      } else {
-                        const newCategories = songCategories.filter(cat => cat !== category.name);
-                        setSongCategories(newCategories);
-                        setSongCategory(newCategories[0] || '');
-                      }
-                    }}
-                    className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500 focus:ring-2"
-                  />
-                  <span className="text-sm text-slate-700">{category.name}</span>
-                </label>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Categories * (Select one or more)
+              </label>
+              {!showAddCat ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddCat(true)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-800 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New Category
+                </button>
+              ) : null}
             </div>
+
+            {showAddCat && (
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <input
+                  type="text"
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  placeholder="Category name (e.g. Warfare, Anthem)"
+                  className="flex-1 px-3 py-1.5 text-xs border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  className="px-2.5 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddCat(false); setNewCatInput(''); }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <div className="border-2 border-slate-300 rounded-lg p-2.5 bg-white max-h-48 overflow-y-auto space-y-1">
+              {/* None / Uncategorized Option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSongCategories([]);
+                  setSongCategory('');
+                }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left ${
+                  songCategories.length === 0
+                    ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border ${
+                  songCategories.length === 0 ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-400'
+                }`}>
+                  {songCategories.length === 0 && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                </span>
+                <span>None (Uncategorized)</span>
+              </button>
+
+              {allCategoryNames.map(catName => {
+                const checked = isChecked(catName);
+                return (
+                  <button
+                    key={catName}
+                    type="button"
+                    onClick={() => toggleCategory(catName)}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left ${
+                      checked
+                        ? 'bg-purple-50 text-purple-700 font-semibold border border-purple-200'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className={`w-3.5 h-3.5 rounded flex items-center justify-center border ${
+                      checked ? 'border-purple-600 bg-purple-600 text-white' : 'border-slate-400'
+                    }`}>
+                      {checked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </span>
+                    <span className="truncate">{catName}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="mt-2 text-xs text-slate-500">
-              Selected: {songCategories.length > 0 ? songCategories.join(', ') : 'None'}
+              Selected: <span className="font-medium text-slate-700">{songCategories.length > 0 ? songCategories.join(', ') : 'None (Uncategorized)'}</span>
             </div>
           </div>
 

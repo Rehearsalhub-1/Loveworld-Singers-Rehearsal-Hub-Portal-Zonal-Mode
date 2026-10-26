@@ -112,7 +112,7 @@ function generateResponseHtml(tokens: any, origin: string | null) {
         <script>
           if (window.opener) {
             window.opener.postMessage({
-              type: 'kingschat_auth_success',
+              type: 'KINGSCHAT_AUTH_SUCCESS',
               accessToken: "${access_token}",
               refreshToken: "${refresh_token}",
               expiresInMillis: ${expires_in_millis}

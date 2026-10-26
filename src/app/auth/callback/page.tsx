@@ -25,7 +25,7 @@ export default function AuthCallbackPage() {
         if (error) {
           console.error('[AuthCallback] OAuth Error:', error, errorDescription)
           if (window.opener) {
-            window.opener.postMessage({ type: 'KINGSCHAT_AUTH_ERROR', error: errorDescription || error }, window.location.origin)
+            window.opener.postMessage({ type: 'KINGSCHAT_AUTH_ERROR', error: errorDescription || error }, '*')
             window.close()
             return
           }
@@ -40,12 +40,18 @@ export default function AuthCallbackPage() {
         if (accessToken) {
           setStatusMessage('Signing in with KingsChat...')
 
-          // If opened in a popup from /auth
+          // If opened in a popup from /auth or /pages/profile
           if (window.opener && !window.opener.closed) {
             try {
               window.opener.postMessage(
-                { type: 'KINGSCHAT_AUTH_SUCCESS', accessToken, kcUserId, kcEmail },
-                window.location.origin
+                {
+                  type: 'KINGSCHAT_AUTH_SUCCESS',
+                  accessToken,
+                  kcUserId,
+                  kcEmail,
+                  user: { userId: kcUserId, username: '' },
+                },
+                '*'
               )
               window.close()
               return

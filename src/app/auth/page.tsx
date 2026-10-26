@@ -208,12 +208,27 @@ export default function AuthPage() {
   // Listen for popup OAuth postMessage
   useEffect(() => {
     const handler = async (event: MessageEvent) => {
-      if (typeof window === 'undefined' || event.origin !== window.location.origin) return
+      if (typeof window === 'undefined') return
+      const data = event.data
+      if (!data || typeof data !== 'object') return
 
-      if (event.data?.type === 'KINGSCHAT_AUTH_SUCCESS' && event.data?.accessToken) {
+      const origin = event.origin || ''
+      const isAllowedOrigin =
+        !origin ||
+        origin === window.location.origin ||
+        origin.includes('rehearsalhub') ||
+        origin.includes('kingschat') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')
+
+      if (!isAllowedOrigin) return
+
+      const type = (data.type || '').toUpperCase()
+
+      if (type === 'KINGSCHAT_AUTH_SUCCESS' && data.accessToken) {
         setIsKingsChatLoading(true)
         setError('')
-        const res = await signInWithKingsChat(event.data.accessToken, undefined, undefined, event.data.kcUserId, event.data.kcEmail)
+        const res = await signInWithKingsChat(data.accessToken, undefined, undefined, data.kcUserId, data.kcEmail)
         setIsKingsChatLoading(false)
 
         if (res.success) {
@@ -222,7 +237,7 @@ export default function AuthPage() {
           window.location.href = target
         } else if (res.code === 'MULTIPLE_ACCOUNTS' && res.accounts) {
           setMultipleAccounts(res.accounts)
-          setPendingAccessToken(event.data.accessToken)
+          setPendingAccessToken(data.accessToken)
         } else if (res.code === 'NO_ACCOUNT' || res.code === 'NEW_USER') {
           setIsLogin(false)
           if (res.profile) {
@@ -235,9 +250,9 @@ export default function AuthPage() {
         } else {
           setError(sanitizeError(res.error || 'KingsChat login failed'))
         }
-      } else if (event.data?.type === 'KINGSCHAT_AUTH_ERROR') {
+      } else if (type === 'KINGSCHAT_AUTH_ERROR') {
         setIsKingsChatLoading(false)
-        setError(sanitizeError(event.data.error || 'KingsChat login was cancelled'))
+        setError(sanitizeError(data.error || 'KingsChat login was cancelled'))
       }
     }
 
@@ -255,10 +270,33 @@ export default function AuthPage() {
     const redirectUri = encodeURIComponent(`${window.location.origin}/auth/callback`)
     const oauthUrl = `https://accounts.kingschat.online/log-in?clientId=${clientId}&origin=web&state=web-flow&redirect_uri=${redirectUri}`
 
-    const popup = window.open(oauthUrl, 'kingschat-login', 'width=520,height=660,top=100,left=200')
+    const width = 520
+    const height = 660
+    const left = window.screen.width / 2 - width / 2
+    const top = window.screen.height / 2 - height / 2
+
+    const popup = window.open(
+      oauthUrl,
+      'kingschat-login',
+      `width=${width},height=${height},top=${top},left=${left},status=no,resizable=yes`
+    )
+
     if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      // Fallback to full-window redirect if popup was blocked
       window.location.href = oauthUrl
+      return
     }
+
+    // Monitor popup closure in case user cancels without authenticating
+    const pollTimer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollTimer)
+        setIsKingsChatLoading((loading) => {
+          // If still loading after popup closed without success, reset spinner
+          return false
+        })
+      }
+    }, 1000)
   }
 
   // Account selector callback

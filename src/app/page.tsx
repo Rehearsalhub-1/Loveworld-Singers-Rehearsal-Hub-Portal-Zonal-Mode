@@ -21,38 +21,68 @@ export default function SplashPage() {
     return () => clearTimeout(timer)
   }, [])
 
-  // KingsChat Mobile Redirect Flow
+  // KingsChat Authentication Redirect Flow (Mobile & Web)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const hash = window.location.hash
     const search = window.location.search
 
-    // Look for state=mobile-flow in search or hash
-    const hasMobileState = search.includes('state=mobile-flow') || hash.includes('state=mobile-flow')
-    
-    if (hasMobileState && (hash.includes('access_token=') || search.includes('access_token='))) {
-      // Parse parameters from both hash and search to ensure we catch them
+    if (hash.includes('access_token=') || search.includes('access_token=')) {
+      // Parse parameters from both hash and search
       const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash)
       const searchParams = new URLSearchParams(search.startsWith('?') ? search.substring(1) : search)
-      
-      const accessToken = hashParams.get('access_token') || searchParams.get('access_token') || hashParams.get('accessToken')
+
+      const accessToken = hashParams.get('access_token') || searchParams.get('access_token') || hashParams.get('accessToken') || searchParams.get('accessToken')
       const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token') || hashParams.get('refreshToken')
       const expiresIn = hashParams.get('expires_in') || searchParams.get('expires_in') || hashParams.get('expiresInMillis')
+      const kcUserId = hashParams.get('user_id') || searchParams.get('user_id') || hashParams.get('userId') || searchParams.get('userId') || hashParams.get('kingschat_id') || ''
+      const kcEmail = hashParams.get('email') || searchParams.get('email') || ''
+
+      const hasMobileState = search.includes('state=mobile-flow') || hash.includes('state=mobile-flow')
 
       if (accessToken) {
-        // Construct the deep link to redirect back to the React Native app
-        const deepLinkUrl = `rehearsalhub://kingschat-callback?access_token=${accessToken}&refresh_token=${refreshToken || ''}&expires_in=${expiresIn || ''}`
-        
-        // Redirect the WebBrowser tab to trigger opening the mobile app
-        window.location.href = deepLinkUrl
+        if (hasMobileState) {
+          // Construct deep link to redirect back to the React Native app
+          const deepLinkUrl = `rehearsalhub://kingschat-callback?access_token=${accessToken}&refresh_token=${refreshToken || ''}&expires_in=${expiresIn || ''}`
+          window.location.href = deepLinkUrl
+          return
+        }
+
+        // Web Flow - If opened in a popup from /auth or /pages/profile
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage(
+              {
+                type: 'KINGSCHAT_AUTH_SUCCESS',
+                accessToken,
+                refreshToken: refreshToken || '',
+                expiresIn: expiresIn || '',
+                kcUserId,
+                kcEmail,
+                user: { userId: kcUserId, username: '' },
+              },
+              '*'
+            )
+            window.close()
+            return
+          } catch (postErr) {
+            console.warn('[KingsChat] Popup postMessage failed, falling back to direct navigation:', postErr)
+          }
+        }
+
+        // Web Flow - Direct navigation in browser: forward to /auth/callback to finalize sign in
+        const fullParams = (search ? search : '') + (hash ? hash : '')
+        router.replace(`/auth/callback${fullParams}`)
+        return
       }
     }
-  }, [pathname])
+  }, [pathname, router])
 
   // IMMEDIATE Redirect Effect
   useEffect(() => {
     if (pathname !== '/') return
+    if (typeof window !== 'undefined' && (window.location.hash.includes('access_token=') || window.location.search.includes('access_token='))) return
 
     const cachedUser = typeof window !== 'undefined' ? localStorage.getItem(AUTH_CACHE_KEY) : null
 
